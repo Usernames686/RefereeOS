@@ -102,6 +102,33 @@ The paper reports macro F1 of 0.87.
         self.assertIn(board["metadata"]["ag2_status"], {"missing_key", "unavailable"})
         self.assertTrue(board["final_packet"]["markdown"])
 
+    def test_uploaded_manuscript_without_artifact_does_not_use_fixture_repro(self) -> None:
+        text = """# Upload Without Artifact
+
+## Abstract
+This uploaded manuscript reports a benchmark result but provides no executable artifact.
+
+## Main Claims
+- The method reports macro F1 of 0.87 on a benchmark.
+
+## Methods
+The study uses a train/validation/test split and a baseline model.
+
+## Results
+The paper reports macro F1 of 0.87.
+"""
+        with patch.dict(os.environ, {"REFEREEOS_ENABLE_AG2_LLM": "false"}, clear=False):
+            with patch.object(orchestrator.DaytonaOpenAIReproRunner, "run") as run_mock:
+                board = orchestrator.analyze_text(
+                    text,
+                    source="uploaded_file:unit.md",
+                    fixture_meta={"fixture_id": "uploaded", "repro_artifact_available": False},
+                )
+
+        run_mock.assert_not_called()
+        self.assertEqual(board["repro_checks"][0]["status"], "not_run")
+        self.assertEqual(board["repro_checks"][0]["commands_run"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

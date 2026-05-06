@@ -86,7 +86,7 @@ def analyze_text(
     field_domain: str | None = None,
 ) -> dict[str, Any]:
     runtime = detect_ag2_runtime()
-    fixture_meta = fixture_meta or {"fixture_id": "uploaded", **FIXTURES["clean"]}
+    fixture_meta = fixture_meta or {"fixture_id": "uploaded", "repro_artifact_available": False}
     paper = parse_manuscript_text(text, source=source)
     if field_domain:
         paper["field_guess"] = field_domain
@@ -101,6 +101,10 @@ def analyze_text(
             "fixture_id": fixture_meta.get("fixture_id"),
             "ag2_status": runtime.status,
             "ag2_model": runtime.llm_model,
+            "source_format": fixture_meta.get("source_format", "markdown"),
+            "ingest_kind": fixture_meta.get("ingest_kind", "fixture" if source.startswith("sample_fixture:") else "upload"),
+            "arxiv_id": fixture_meta.get("arxiv_id"),
+            "latex_path": fixture_meta.get("latex_path", "n/a"),
         },
     )
 
@@ -247,6 +251,10 @@ def _novelty(board: dict[str, Any], paper: dict[str, Any]) -> None:
 
 
 def _reproducibility(board: dict[str, Any], paper: dict[str, Any], fixture_meta: dict[str, Any]) -> None:
+    if not _has_repro_artifact(fixture_meta):
+        board["repro_checks"].append(_no_artifact_receipt(fixture_meta))
+        return
+
     receipt = DaytonaOpenAIReproRunner().run(fixture_meta, paper)
     board["repro_checks"].append(receipt)
 
@@ -262,6 +270,31 @@ def _reproducibility(board: dict[str, Any], paper: dict[str, Any], fixture_meta:
             receipt.get("human_followup", "Ask authors for executable artifacts."),
             claim_ids=_metric_claim_ids(board),
         )
+
+
+def _has_repro_artifact(fixture_meta: dict[str, Any]) -> bool:
+    if fixture_meta.get("repro_artifact_available") is False:
+        return False
+    has_inline_artifact = bool(fixture_meta.get("results_csv_text") and fixture_meta.get("metric_script_text"))
+    has_fixture_artifact = bool(fixture_meta.get("results_path"))
+    return bool((has_inline_artifact or has_fixture_artifact) and fixture_meta.get("reported_result") is not None)
+
+
+def _no_artifact_receipt(fixture_meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "probe": "No executable reproducibility artifact submitted",
+        "sandbox_provider": "Daytona",
+        "model": DEFAULT_OPENAI_MODEL,
+        "status": "not_run",
+        "commands_run": [],
+        "reported_result": str(fixture_meta.get("reported_result") or "unavailable"),
+        "observed_result": "unavailable",
+        "artifact_paths": [],
+        "stdout_stderr_summary": "No CSV artifact and metric script were submitted for this manuscript.",
+        "human_followup": "Ask authors for executable code, data, and a reported metric if reproducibility review is required.",
+        "llm_interpretation": "The manuscript intake completed, but the Daytona reproducibility probe was skipped because no executable artifact was supplied.",
+        "exit_code": 0,
+    }
 
 
 def _area_chair(board: dict[str, Any], runtime: AG2Runtime) -> None:
