@@ -65,6 +65,10 @@ def build_empty_board(paper: dict[str, Any], metadata: dict[str, Any]) -> dict[s
             "fixture_id": metadata.get("fixture_id"),
             "ag2_status": metadata.get("ag2_status"),
             "ag2_model": metadata.get("ag2_model"),
+            "source_format": metadata.get("source_format", "markdown"),
+            "ingest_kind": metadata.get("ingest_kind", "fixture"),
+            "arxiv_id": metadata.get("arxiv_id"),
+            "latex_path": metadata.get("latex_path", "n/a"),
         },
         "paper": {
             "title": paper["title"],

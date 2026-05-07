@@ -1,0 +1,32 @@
+\documentclass{article}
+\title{Calibrated Benchmarking of Sparse Cell-State Classifiers}
+\author{Synthetic RefereeOS Fixture}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We introduce SparseCellNet, a lightweight classifier for single-cell state assignment from compact gene panels. On a held-out benchmark of 1,200 cells, SparseCellNet improves macro F1 from 0.80 to 0.87 compared with a logistic-regression baseline while using 35 percent fewer features.
+\end{abstract}
+
+\section{Main Claims}
+\begin{itemize}
+\item SparseCellNet improves macro F1 by 0.07 over the baseline on a held-out test split.
+\item Feature pruning reduces the panel size by 35 percent without reducing macro F1 below 0.86.
+\item The method is practical for low-resource clinical screening workflows.
+\end{itemize}
+
+\input{sections/methods}
+
+\section{Results}
+SparseCellNet reaches a reported macro F1 of 0.87 on the test split. The released artifact contains per-class precision and recall values used by the reproduction script to recalculate the macro F1 summary.
+
+\section{Data and Code}
+Artifact: results_clean.csv.
+Script: reproduce_metric.py.
+Reported result: 0.87.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

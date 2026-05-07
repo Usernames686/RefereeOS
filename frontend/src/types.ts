@@ -60,6 +60,10 @@ export type EvidenceBoard = {
     llm_provider: string;
     llm_model: string;
     fixture_id: string;
+    source_format?: string;
+    ingest_kind?: string;
+    arxiv_id?: string | null;
+    latex_path?: "fast" | "compile" | "n/a" | string;
   };
   paper: {
     title: string;

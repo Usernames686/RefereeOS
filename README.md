@@ -135,6 +135,20 @@ observed_result=0.87
 
 For custom uploaded scripts, RefereeOS does not run a local fallback. If Daytona fails, the receipt is marked inconclusive instead of executing arbitrary uploaded code locally.
 
+## LaTeX Viability Path
+
+The API also accepts LaTeX sources for prototype stress testing:
+
+- `arxiv_id`: fetches `https://arxiv.org/e-print/{id}` and converts the source package.
+- `latex_archive`: accepts `.tex`, `.zip`, `.tar`, `.tar.gz`, `.tgz`, or `.tex.gz` uploads.
+- `latex_force_compile=true`: skips fast conversion and tries the Daytona compile fallback.
+
+LaTeX runs without an uploaded CSV/script artifact get a `not_run` reproducibility receipt instead of borrowing fixture artifacts. Batch evaluation is available with:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\latex_viability_eval.py --ids-file ids.txt --output outputs\latex_viability.json
+```
+
 ## API
 
 - `POST /api/analyze`

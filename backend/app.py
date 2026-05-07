@@ -16,6 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from backend.agents.orchestrator import analyze_fixture, analyze_text
+from backend.parsing.latex_ingest import (
+    ArxivSourceUnavailable,
+    LatexIngestError,
+    fetch_arxiv_source,
+    temporary_source_root,
+    unpack_upload,
+)
+from backend.parsing.latex_to_markdown import LatexConversionError, convert_latex_source
 from backend.parsing.paper_parser import extract_pdf_text, list_fixtures, load_fixture_text
 from backend.storage.evidence_board import run_store
 
@@ -50,19 +58,67 @@ async def analyze(
     fixture_id: Annotated[str, Form()] = "clean",
     field_domain: Annotated[str | None, Form()] = None,
     reported_result: Annotated[float | None, Form()] = None,
+    arxiv_id: Annotated[str | None, Form()] = None,
+    latex_force_compile: Annotated[bool, Form()] = False,
     file: Annotated[UploadFile | None, File()] = None,
+    latex_archive: Annotated[UploadFile | None, File()] = None,
     artifact_file: Annotated[UploadFile | None, File()] = None,
     script_file: Annotated[UploadFile | None, File()] = None,
 ) -> dict:
     custom_artifact = await _read_custom_artifact(artifact_file, script_file, reported_result)
 
-    if file and file.filename:
+    if arxiv_id and arxiv_id.strip():
+        with temporary_source_root("refereeos_arxiv") as tmp:
+            try:
+                source_dir = fetch_arxiv_source(arxiv_id, dest_root=tmp)
+                converted = convert_latex_source(source_dir, force_compile=latex_force_compile)
+            except ArxivSourceUnavailable as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except (LatexIngestError, LatexConversionError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        fixture_meta = _no_artifact_meta(
+            fixture_id=f"arxiv:{arxiv_id.strip()}",
+            source_format="latex",
+            ingest_kind="arxiv",
+            arxiv_id=arxiv_id.strip(),
+            latex_path=converted.latex_path,
+        )
+        if custom_artifact:
+            fixture_meta.update(custom_artifact)
+        board = analyze_text(converted.markdown, source=f"arxiv:{arxiv_id.strip()}", fixture_meta=fixture_meta, field_domain=field_domain)
+    elif latex_archive and latex_archive.filename:
+        with temporary_source_root("refereeos_latex_upload") as tmp:
+            try:
+                source_dir = await unpack_upload(latex_archive, dest_root=tmp)
+                converted = convert_latex_source(source_dir, force_compile=latex_force_compile)
+            except (LatexIngestError, LatexConversionError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        fixture_meta = _no_artifact_meta(
+            fixture_id="latex_upload",
+            source_format="latex",
+            ingest_kind="latex_archive",
+            latex_path=converted.latex_path,
+        )
+        if custom_artifact:
+            fixture_meta.update(custom_artifact)
+        board = analyze_text(
+            converted.markdown,
+            source=f"latex_upload:{latex_archive.filename}",
+            fixture_meta=fixture_meta,
+            field_domain=field_domain,
+        )
+    elif file and file.filename:
         if file.content_type == "application/pdf" or file.filename.lower().endswith(".pdf"):
             text = extract_pdf_text(file.file)
         else:
             text = (await file.read()).decode("utf-8", errors="ignore")
-        _, fixture_meta = load_fixture_text("clean")
-        fixture_meta["fixture_id"] = "uploaded"
+        fixture_meta = _no_artifact_meta(
+            fixture_id="uploaded",
+            source_format="pdf" if file.filename.lower().endswith(".pdf") else "markdown",
+            ingest_kind="upload",
+        )
         if custom_artifact:
             fixture_meta.update(custom_artifact)
         board = analyze_text(text, source=f"uploaded_file:{file.filename}", fixture_meta=fixture_meta, field_domain=field_domain)
@@ -81,6 +137,24 @@ async def analyze(
 
     run = run_store.create(board)
     return run
+
+
+def _no_artifact_meta(
+    *,
+    fixture_id: str,
+    source_format: str,
+    ingest_kind: str,
+    arxiv_id: str | None = None,
+    latex_path: str = "n/a",
+) -> dict:
+    return {
+        "fixture_id": fixture_id,
+        "source_format": source_format,
+        "ingest_kind": ingest_kind,
+        "arxiv_id": arxiv_id,
+        "latex_path": latex_path,
+        "repro_artifact_available": False,
+    }
 
 
 async def _read_custom_artifact(
@@ -113,6 +187,7 @@ async def _read_custom_artifact(
         "results_csv_text": artifact_text,
         "metric_script_text": script_text,
         "custom_artifact": True,
+        "repro_artifact_available": True,
     }
 
 
