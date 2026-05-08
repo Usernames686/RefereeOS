@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from backend.agents import orchestrator
+from backend.agents.beta_review import BetaReviewConfig, detect_beta_config, parse_json_or_text
 
 
 PASSED_RECEIPT = {
@@ -128,6 +129,58 @@ The paper reports macro F1 of 0.87.
         run_mock.assert_not_called()
         self.assertEqual(board["repro_checks"][0]["status"], "not_run")
         self.assertEqual(board["repro_checks"][0]["commands_run"], [])
+
+
+class BetaReviewTests(unittest.TestCase):
+    def test_detect_beta_config_prefers_deepseek(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DEEPSEEK_API_KEY": "ds-test",
+                "OPENROUTER_API_KEY": "or-test",
+                "AG2_MODEL": "deepseek-chat",
+            },
+            clear=True,
+        ):
+            config = detect_beta_config()
+
+        self.assertEqual(config, BetaReviewConfig("deepseek-chat", "ds-test", "https://api.deepseek.com/v1"))
+
+    def test_detect_beta_config_uses_provider_defaults_when_values_are_blank(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DEEPSEEK_API_KEY": "ds-test",
+                "OPENROUTER_API_KEY": "",
+                "AG2_MODEL": "",
+                "AG2_BASE_URL": "",
+            },
+            clear=True,
+        ):
+            config = detect_beta_config()
+
+        self.assertEqual(config, BetaReviewConfig("deepseek-chat", "ds-test", "https://api.deepseek.com/v1"))
+
+    def test_detect_beta_config_supports_openrouter(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DEEPSEEK_API_KEY": "",
+                "OPENROUTER_API_KEY": "or-test",
+                "AG2_MODEL": "google/gemini-3-flash-preview",
+            },
+            clear=True,
+        ):
+            config = detect_beta_config()
+
+        self.assertEqual(config.api_key, "or-test")
+        self.assertEqual(config.base_url, "https://openrouter.ai/api/v1")
+
+    def test_parse_json_or_text_handles_plain_text(self) -> None:
+        parsed = parse_json_or_text("Major concern: sample size is thin.", "deepseek-chat")
+
+        self.assertEqual(parsed["source"], "AG2 Beta + deepseek-chat")
+        self.assertIn("sample size", parsed["summary"])
 
 
 if __name__ == "__main__":
